@@ -4,8 +4,8 @@ import re
 import zipfile
 
 st.set_page_config(
-    page_title="אוצר ספרי קבלה | מנוע חיפוש ועיון",
-    page_icon="📖",
+    page_title="מטמונים | אוצר הספרים",
+    page_icon="💎",
     layout="wide"
 )
 
@@ -84,7 +84,7 @@ st.markdown("""
         color: #1d4ed8 !important;
     }
 
-    /* 7. לשוניות מתקפלות (Expanders) - רקע בהיר מובטח */
+    /* 7. לשוניות מתקפלות (Expanders) */
     [data-testid="stExpander"], details {
         background-color: #ffffff !important;
         border: 1px solid #e7e5e4 !important;
@@ -378,6 +378,7 @@ def get_term_pattern(term, allow_prefixes=True, allow_flexible=True, allow_acron
             p = r'\s+'.join(word_pats)
         else:
             p = make_flexible_spelling(v) if allow_flexible else re.escape(v)
+            
         variant_patterns.append(p)
         
     combined = "|".join(variant_patterns)
@@ -450,11 +451,11 @@ sorted_book_keys = sorted(
     key=lambda k: get_sort_key(books_data[k]['title'])
 )
 
-# --- כותרת ומעבר מצבים ---
+# --- כותרת ומעבר מצבים (מיתוג: מַטְמוֹנִים) ---
 header_col1, header_col2 = st.columns([2, 1])
 with header_col1:
-    st.markdown("# 📖 אוצר חכמת הקבלה")
-    st.caption("מנוע חיפוש, מחקר ועיון מתקדם בספרי קבלה וחסידות")
+    st.markdown("# 💎 מַטְמוֹנִים")
+    st.caption("אם תבקשנה ככסף וכמטמונים תחפשנה · בית מדרש לחיפוש ועיון בספרי קודש")
 
 with header_col2:
     mode_choice = st.radio(
