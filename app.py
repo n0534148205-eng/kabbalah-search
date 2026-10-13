@@ -1,21 +1,21 @@
-import streamlit as st
+import difflib
+import json
 import os
 import re
 import sqlite3
-import difflib
-import json
 import time
-import zipfile
-import concurrent.futures
+import streamlit as st
+import streamlit.components.v1 as components
 
 st.set_page_config(
-    page_title="מטמונים | מהדורת DBS למהדירי קבלה",
+    page_title="מטמונים",
     page_icon="📜",
-    layout="wide"
+    layout="wide",
 )
 
-# --- עיצוב מותאם לעיון ממושך, בהיר ונקי ---
-st.markdown("""
+# ----------------- עיצוב ממשק -----------------
+st.markdown(
+    """
 <style>
     @font-face {
         font-family: 'Assistant';
@@ -34,1244 +34,789 @@ st.markdown("""
     [data-testid="stAppViewContainer"], 
     [data-testid="stHeader"] {
         font-family: 'Assistant', sans-serif !important;
-        background-color: #f7f6f2 !important;
-        color: #1c1917 !important;
+        background-color: #f8fafc !important;
+        color: #0f172a !important;
         direction: rtl !important;
         text-align: right !important;
     }
 
     p, span, label, h1, h2, h3, h4, h5, h6, [data-testid="stMarkdownContainer"] {
-        color: #1c1917 !important;
+        color: #0f172a !important;
         direction: rtl !important;
         text-align: right !important;
     }
 
     h1, h2, h3 {
         font-family: 'Frank Ruhl Libre', serif !important;
-        color: #0c0a09 !important;
+        color: #0284c7 !important;
         font-weight: 700 !important;
     }
 
-    div[data-testid="stForm"] {
-        background-color: #ffffff !important;
-        border: 1px solid #e7e5e4 !important;
-        border-radius: 14px !important;
-        padding: 24px !important;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.03) !important;
+    .col-header-box {
+        background: #1e3a8a;
+        color: #ffffff !important;
+        text-align: center;
+        padding: 6px;
+        font-weight: 800;
+        border-radius: 6px;
+        font-size: 14px;
+        margin-bottom: 8px;
     }
 
-    .stTextInput input, .stNumberInput input, textarea {
-        background-color: #ffffff !important;
-        color: #1c1917 !important;
-        border: 1.5px solid #d6d3d1 !important;
-        border-radius: 10px !important;
-        font-size: 16px !important;
-        font-weight: 600 !important;
+    .or-separator {
+        text-align: center;
+        color: #64748b;
+        font-size: 11px;
+        font-weight: 800;
+        margin: -8px 0;
     }
 
-    div[data-baseweb="select"], div[data-baseweb="select"] * {
-        background-color: #ffffff !important;
-        color: #1c1917 !important;
+    .section-title {
+        font-weight: 800;
+        color: #1e3a8a;
+        border-bottom: 2px solid #e2e8f0;
+        padding-bottom: 4px;
+        margin-bottom: 12px;
+        font-size: 15px;
     }
 
     .result-card {
         background: #ffffff !important;
-        border: 1px solid #e7e5e4 !important;
-        border-radius: 14px !important;
-        padding: 20px 24px !important;
-        margin-bottom: 18px !important;
-        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.02) !important;
+        border: 1px solid #e2e8f0 !important;
+        border-radius: 12px !important;
+        padding: 18px 22px !important;
+        margin-bottom: 16px !important;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.03) !important;
     }
 
     .badge-book {
         display: inline-block;
         background-color: #eff6ff !important;
-        color: #1e40af !important;
-        font-weight: 700 !important;
+        color: #1d4ed8 !important;
+        font-weight: 800 !important;
         font-size: 13.5px !important;
-        padding: 4px 12px !important;
-        border-radius: 16px !important;
-        border: 1px solid #dbeafe !important;
-        margin-left: 6px !important;
-    }
-
-    .badge-author {
-        display: inline-block;
-        background-color: #f3e8ff !important;
-        color: #6b21a8 !important;
-        font-weight: 700 !important;
-        font-size: 13px !important;
-        padding: 4px 10px !important;
-        border-radius: 16px !important;
-        border: 1px solid #e9d5ff !important;
+        padding: 3px 10px !important;
+        border-radius: 6px !important;
+        border: 1px solid #bfdbfe !important;
         margin-left: 6px !important;
     }
 
     .badge-section {
         display: inline-block;
         background-color: #fef3c7 !important;
-        color: #92400e !important;
-        font-weight: 700 !important;
+        color: #b45309 !important;
+        font-weight: 800 !important;
         font-size: 13px !important;
-        padding: 4px 10px !important;
-        border-radius: 16px !important;
+        padding: 3px 10px !important;
+        border-radius: 6px !important;
         border: 1px solid #fde68a !important;
         margin-left: 6px !important;
     }
 
     .snippet-text {
         font-size: 18px !important;
-        line-height: 1.9 !important;
-        color: #292524 !important;
-        margin-top: 12px !important;
+        line-height: 1.95 !important;
+        color: #1e293b !important;
+        margin-top: 10px !important;
         padding-right: 14px !important;
-        border-right: 3px solid #3b82f6 !important;
+        border-right: 3px solid #2563eb !important;
         text-align: justify !important;
     }
 
     .search-highlight {
-        background-color: #fef08a !important;
+        background-color: #fde047 !important;
         color: #000000 !important;
         font-weight: 800 !important;
         padding: 1px 4px !important;
-        border-radius: 4px;
+        border-radius: 3px;
         border-bottom: 2px solid #ca8a04 !important;
     }
-
-    .diff-del {
-        background-color: #fee2e2 !important;
-        color: #991b1b !important;
-        text-decoration: line-through;
-        padding: 2px 4px;
-        border-radius: 4px;
-    }
-    .diff-add {
-        background-color: #dcfce7 !important;
-        color: #166534 !important;
-        font-weight: 700;
-        padding: 2px 4px;
-        border-radius: 4px;
-    }
-
-    .stButton button {
-        background-color: #ffffff !important;
-        color: #1c1917 !important;
-        border: 1.5px solid #d6d3d1 !important;
-        border-radius: 10px !important;
-        font-weight: 700 !important;
-    }
-
-    div[data-testid="stForm"] .stButton button {
-        background-color: #1e3a8a !important;
-        color: #ffffff !important;
-        border: none !important;
-    }
-    div[data-testid="stForm"] .stButton button * {
-        color: #ffffff !important;
-    }
 </style>
-""", unsafe_allow_html=True)
-
-BOOKS_FOLDER = "books"
-DB_FILE = "matmonim_dbs.db"
-PARAS_PER_PAGE = 15
-SCHEMA_VERSION = 6
-
-if not os.path.exists(BOOKS_FOLDER):
-    os.makedirs(BOOKS_FOLDER)
-
-# אתחול Session State
-for key, default in [
-    ("app_mode", "🔍 חיפוש במאגר"),
-    ("reader_author", "כל המחברים"),
-    ("reader_category", "כל המדורים"),
-    ("reader_book_path", None),
-    ("reader_page", 1),
-    ("reader_target_p", 0),
-    ("reader_jump", None),
-    ("reader_last_book", None),
-    ("diff_text_a", ""),
-    ("diff_text_b", ""),
-]:
-    if key not in st.session_state:
-        st.session_state[key] = default
-
-KABBALAH_ACRONYMS = {
-    "אדם קדמון": "א\"ק",
-    "זעיר אנפין": "ז\"א",
-    "אריך אנפין": "א\"א",
-    "עתיק יומין": "ע\"י",
-    "אבא ואמא": "או\"א",
-    "ישראל סבא ותבונה": "ישסו\"ת",
-    "עשר ספירות": "ע\"ס",
-    "נצח הוד יסוד": "נה\"י",
-    "נצח הוד יסוד מלכות": "נהי\"ם",
-    "חכמה בינה דעת": "חב\"ד",
-    "חסד גבורה תפארת": "חג\"ת",
-    "שלוש ראשונות": "ג\"ר",
-    "שלש ראשונות": "ג\"ר",
-    "שבע תחתונות": "ז\"ת",
-    "קודשא בריך הוא": "קוב\"ה",
-    "אצילות בריאה יצירה עשיה": "אבי\"ע",
-    "בריאה יצירה עשיה": "בי\"ע",
-    "אור פנימי": "או\"פ",
-    "אור מקיף": "או\"מ",
-    "אור חוזר": "או\"ח",
-    "אור ישר": "או\"י",
-    "אור אינסוף": "אוא\"ס",
-    "מיין נוקבין": "מ\"ן",
-    "מיין דכורין": "מ\"ד",
-    "נפש רוח נשמה חיה יחידה": "נרנח\"י",
-    "עץ חיים": "ע\"ח",
-    "פרי עץ חיים": "פע\"ח",
-    "שער הכוונות": "שה\"כ",
-    "שער הפסוקים": "שה\"פ",
-    "שער הגלגולים": "שה\"ג",
-    "שער רוח הקודש": "שרה\"ק",
-    "מבוא שערים": "מבו\"ש",
-    "אוצרות חיים": "אוצה\"ח",
-    "רבי שמעון בר יוחאי": "רשב\"י",
-    "רבי משה קורדובירו": "רמ\"ק",
-    "רבי משה חיים לוצאטו": "רמח\"ל",
-    "אדוננו רבי יצחק": "האר\"י",
-    "רבי חיים ויטאל": "מהרח\"ו",
-    "רבי שלום שרעבי": "הרש\"ש",
-}
-
-SECTION_RE = re.compile(
-    r'^(?:(?:שער|ענף|פרק|סימן|סעיף|הלכה|דף|פתח|מאמר|חלק|אות|כלל)\s+([א-ת\d"״\'-]+|[א-ת]+(?:\s+[א-ת]+)?))',
-    re.IGNORECASE
+""",
+    unsafe_allow_html=True,
 )
 
-GEMATRIA_MAP = {
-    'א': 1, 'ב': 2, 'ג': 3, 'ד': 4, 'ה': 5, 'ו': 6, 'ז': 7, 'ח': 8, 'ט': 9,
-    'י': 10, 'כ': 20, 'ך': 20, 'ל': 30, 'מ': 40, 'ם': 40, 'נ': 50, 'ן': 50,
-    'ס': 60, 'ע': 70, 'פ': 80, 'ף': 80, 'צ': 90, 'ץ': 90, 'ק': 100, 'ר': 200,
-    'ש': 300, 'ת': 400
+# ----------------- JavaScript: מעבר אוטומטי בלחיצה על רווח -----------------
+components.html(
+    """
+<script>
+function setupSpaceJump() {
+    const doc = window.parent.document;
+    for (let col = 1; col <= 4; col++) {
+        for (let row = 1; row <= 4; row++) {
+            const input = doc.querySelector(`input[aria-label="inp_${col}_${row}"]`);
+            if (input && !input.dataset.hasSpaceListener) {
+                input.dataset.hasSpaceListener = "true";
+                input.addEventListener('keydown', function(e) {
+                    if (e.key === ' ' || e.code === 'Space') {
+                        if (input.value.trim().length > 0) {
+                            e.preventDefault();
+                            const nextCol = col < 4 ? col + 1 : 1;
+                            const nextInput = doc.querySelector(`input[aria-label="inp_${nextCol}_1"]`);
+                            if (nextInput) {
+                                nextInput.focus();
+                                nextInput.select();
+                            }
+                        }
+                    }
+                });
+            }
+        }
+    }
+}
+setInterval(setupSpaceJump, 400);
+</script>
+""",
+    height=0,
+    width=0,
+)
+
+DB_FILE = "matmonim_dbs.db"
+PARAS_PER_PAGE = 15
+
+if not os.path.exists(DB_FILE):
+    st.error(f"⚠️ מסד הנתונים `{DB_FILE}` לא נמצא! הרץ תחילה `python build_index.py`.")
+    st.stop()
+
+@st.cache_resource
+def get_db_connection():
+    conn = sqlite3.connect(DB_FILE, timeout=60.0, check_same_thread=False)
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA synchronous=NORMAL;")
+    conn.execute("PRAGMA cache_size=-32000;")
+    conn.execute("PRAGMA mmap_size=67108864;")
+    return conn
+
+conn = get_db_connection()
+
+# טעינת נתוני ספרים מה-DB
+books_meta_rows = conn.execute("SELECT path, title, category, total_paras, toc_json, author FROM books_meta ORDER BY title").fetchall()
+books_by_path = {row[0]: {"title": row[1], "category": row[2], "total": row[3], "toc": row[4], "author": row[5]} for row in books_meta_rows}
+
+# אתחול Session State למאגרים נבחרים (ברירת מחדל: כולם מסומנים)
+if "selected_books" not in st.session_state:
+    st.session_state["selected_books"] = set(books_by_path.keys())
+
+if "search_history" not in st.session_state:
+    st.session_state["search_history"] = []
+
+if "clear_inputs_flag" not in st.session_state:
+    st.session_state["clear_inputs_flag"] = False
+
+# ----------------- בניית היררכיית עץ המקורות מתוך תיקיית books -----------------
+@st.cache_data
+def get_folder_hierarchy():
+    hierarchy = {}
+    for p, info in books_by_path.items():
+        parts = [part.strip() for part in p.split(" / ") if part.strip().lower() != "books"]
+        if len(parts) <= 1:
+            top = "ספרים כלליים"
+            sub = "כללי"
+        elif len(parts) == 2:
+            top = parts[0]
+            sub = "כללי"
+        else:
+            top = parts[0]
+            sub = parts[1]
+
+        if top not in hierarchy:
+            hierarchy[top] = {}
+        if sub not in hierarchy[top]:
+            hierarchy[top][sub] = []
+        hierarchy[top][sub].append(p)
+    return hierarchy
+
+folder_tree = get_folder_hierarchy()
+
+# ----------------- חלון ניהול המאגרים (עץ מקורות פרויקט השו״ת) -----------------
+def render_corpus_manager_content():
+    st.markdown("### 🏛️ ניהול המאגרים ועץ המקורות")
+    st.caption("סמן ב-V את המאגרים, התיקיות והספרים שבהם יתבצע החיפוש")
+
+    total_books_count = len(books_by_path)
+    selected_count = len(st.session_state["selected_books"])
+
+    top_c1, top_c2, top_c3, top_c4 = st.columns([1.2, 1.4, 2.5, 1.2])
+    with top_c1:
+        if st.button("✅ בחר הכל", use_container_width=True):
+            st.session_state["selected_books"] = set(books_by_path.keys())
+            st.rerun()
+    with top_c2:
+        if st.button("❌ התחל שוב (נקה)", use_container_width=True):
+            st.session_state["selected_books"] = set()
+            st.rerun()
+    with top_c3:
+        pct = (selected_count / total_books_count * 100) if total_books_count else 0
+        st.info(f"נבחרו **{selected_count:,}** מתוך **{total_books_count:,}** ספרים ({pct:.1f}%)")
+    with top_c4:
+        if st.button("💾 אישור וסגירה", use_container_width=True):
+            st.rerun()
+
+    st.markdown("---")
+
+    tab_tree, tab_authors, tab_search = st.tabs(["🌳 עץ מקורות", "✍️ לפי מחברים", "🔍 איתור ספרים מהיר"])
+
+    # טאב 1: עץ מקורות (היררכיית תיקיות מלאה)
+    with tab_tree:
+        for top_folder, subfolders in folder_tree.items():
+            top_all_books = [p for sub_list in subfolders.values() for p in sub_list]
+            is_all_selected = all(p in st.session_state["selected_books"] for p in top_all_books)
+            is_some_selected = any(p in st.session_state["selected_books"] for p in top_all_books)
+
+            col_chk, col_exp = st.columns([0.08, 0.92])
+            with col_chk:
+                chk_top = st.checkbox(
+                    " ",
+                    value=is_all_selected,
+                    key=f"chk_top_{top_folder}",
+                    label_visibility="collapsed"
+                )
+                if chk_top != is_all_selected:
+                    if chk_top:
+                        st.session_state["selected_books"].update(top_all_books)
+                    else:
+                        st.session_state["selected_books"].difference_update(top_all_books)
+                    st.rerun()
+
+            with col_exp:
+                with st.expander(f"📕 **{top_folder}** ({len(top_all_books)} ספרים)", expanded=False):
+                    for sub_name, b_paths in subfolders.items():
+                        if sub_name != "כללי":
+                            is_sub_all = all(p in st.session_state["selected_books"] for p in b_paths)
+                            sub_c1, sub_c2 = st.columns([0.1, 0.9])
+                            with sub_c1:
+                                chk_sub = st.checkbox(" ", value=is_sub_all, key=f"chk_sub_{top_folder}_{sub_name}", label_visibility="collapsed")
+                                if chk_sub != is_sub_all:
+                                    if chk_sub:
+                                        st.session_state["selected_books"].update(b_paths)
+                                    else:
+                                        st.session_state["selected_books"].difference_update(b_paths)
+                                    st.rerun()
+                            with sub_c2:
+                                st.markdown(f"📁 **{sub_name}** ({len(b_paths)} ספרים)")
+
+                        for bp in b_paths:
+                            b_title = books_by_path[bp]["title"]
+                            is_b_sel = bp in st.session_state["selected_books"]
+                            chk_b = st.checkbox(f"📖 {b_title}", value=is_b_sel, key=f"b_{bp}")
+                            if chk_b != is_b_sel:
+                                if chk_b:
+                                    st.session_state["selected_books"].add(bp)
+                                else:
+                                    st.session_state["selected_books"].discard(bp)
+                                st.rerun()
+
+    # טאב 2: לפי מחברים
+    with tab_authors:
+        authors_map = {}
+        for bp, info in books_by_path.items():
+            a = info["author"]
+            authors_map.setdefault(a, []).append(bp)
+
+        for author_name, a_books in sorted(authors_map.items()):
+            is_auth_all = all(p in st.session_state["selected_books"] for p in a_books)
+            col_a1, col_a2 = st.columns([0.08, 0.92])
+            with col_a1:
+                chk_a = st.checkbox(" ", value=is_auth_all, key=f"auth_{author_name}", label_visibility="collapsed")
+                if chk_a != is_auth_all:
+                    if chk_a:
+                        st.session_state["selected_books"].update(a_books)
+                    else:
+                        st.session_state["selected_books"].difference_update(a_books)
+                    st.rerun()
+            with col_a2:
+                st.markdown(f"✍️ **{author_name}** ({len(a_books)} ספרים)")
+
+    # טאב 3: איתור מהיר
+    with tab_search:
+        search_filter = st.text_input("הקלד שם ספר לסינון מהיר בעץ:")
+        if search_filter:
+            matches = [bp for bp in books_by_path.keys() if search_filter in books_by_path[bp]["title"]]
+            st.caption(f"נמצאו {len(matches)} ספרים תואמים:")
+            for mbp in matches:
+                is_mb_sel = mbp in st.session_state["selected_books"]
+                chk_mb = st.checkbox(f"{books_by_path[mbp]['title']} [{books_by_path[mbp]['author']}]", value=is_mb_sel, key=f"search_{mbp}")
+                if chk_mb != is_mb_sel:
+                    if chk_mb:
+                        st.session_state["selected_books"].add(mbp)
+                    else:
+                        st.session_state["selected_books"].discard(mbp)
+                    st.rerun()
+
+if hasattr(st, "dialog"):
+    @st.dialog("ניהול המאגרים - עץ מקורות", width="large")
+    def open_corpus_dialog():
+        render_corpus_manager_content()
+else:
+    def open_corpus_dialog():
+        with st.expander("📚 ניהול המאגרים - עץ מקורות", expanded=True):
+            render_corpus_manager_content()
+
+# ----------------- הרחבות לשוניות ודקדוקיות -----------------
+KABBALAH_ACRONYMS = {
+    "אדם קדמון": 'א"ק', "זעיר אנפין": 'ז"א', "אריך אנפין": 'א"א', "עתיק יומין": 'ע"י',
+    "אבא ואמא": 'או"א', "ישראל סבא ותבונה": 'ישסו"ת', "עשר ספירות": 'ע"ס',
+    "נצח הוד יסוד": 'נה"י', "נצח הוד יסוד מלכות": 'נהי"ם', "חכמה בינה דעת": 'חב"ד',
+    "חסד גבורה תפארת": 'חג"ת', "שלוש ראשונות": 'ג"ר', "שבע תחתונות": 'ז"ת',
+    "קודשא בריך הוא": 'קוב"ה', "אצילות בריאה יצירה עשיה": 'אבי"ע',
+    "אור פנימי": 'או"פ', "אור מקיף": 'או"מ', "אור חוזר": 'או"ח', "אור ישר": 'או"י',
+    "אור אינסוף": 'אוא"ס', "מיין נוקבין": 'מ"ן', "מיין דכורין": 'מ"ד',
+    "עץ חיים": 'ע"ח', "פרי עץ חיים": 'פע"ח', "שער הכוונות": 'שה"כ',
+    "שער הגלגולים": 'שה"ג', "רבי שמעון בר יוחאי": 'רשב"י',
+    "רבי משה קורדובירו": 'רמ"ק', "רבי משה חיים לוצאטו": 'רמח"ל',
+    "אדוננו רבי יצחק": 'האר"י', "רבי חיים ויטאל": 'מהרח"ו',
 }
 
 _strip_chars = {c: None for c in range(0x0591, 0x05C7 + 1)}
-for q in ['"', "'", '״', '׳', '`', '”', '“', '’', '‘', '־', '-']:
+for q in ['"', "'", "״", "׳", "`", "”", "“", "’", "‘", "־", "-"]:
     _strip_chars[ord(q)] = None
-
 FAST_CLEAN_TRANS = str.maketrans(_strip_chars)
 
 def fast_clean(text: str) -> str:
     return text.translate(FAST_CLEAN_TRANS)
 
-def calculate_gematria(text):
-    return sum(GEMATRIA_MAP.get(char, 0) for char in text)
-
-def extract_author(title, path):
-    full = (title + " " + path).lower()
-    if any(w in full for w in ["זוהר", "זהר", "תיקוני", "תקוני", "ספרא דצניעותא", "אידרא", "רשב\"י", "רשבי", "שמעון בר יוחאי", "zohar"]):
-        return "רבי שמעון בר יוחאי (רשב\"י)"
-    if any(w in full for w in ["עץ חיים", "פרי עץ חיים", "כוונות", "הכוונות", "אוצרות חיים", "מבוא שערים", "שער הפסוקים", "שער הגלגולים", "שער מאמרי", "שער רוח הקודש", "ליקוטי תורה", "ויטאל", "מהרח\"ו", "מהרחו", "האר\"י", "הארי", "לוריא"]):
-        return "האר\"י ומהרח\"ו"
-    if any(w in full for w in ["פרדס", "פרדס רימונים", "אילימה", "תומר דבורה", "שיעור קומה", "אור יקר", "קורדובירו", "רמ\"ק", "רמק"]):
-        return "רבי משה קורדובירו (רמ\"ק)"
-    if any(w in full for w in ["פתחי חכמה", "דעת תבונות", "אדיר במרום", "רמח\"ל", "רמחל", "לוצאטו", "מאמר העיקרים", "קל\"ח", "דרך ה'"]):
-        return "רבי משה חיים לוצאטו (רמח\"ל)"
-    if any(w in full for w in ["אבולעפיה", "אבולעפיא"]):
-        return "רבי אברהם אבולעפיה"
-    if any(w in full for w in ["רמב\"ן", "רמבן", "נחמני"]):
-        return "רבנו משה בן נחמן (רמב\"ן)"
-    if any(w in full for w in ["שערי אורה", "גיקטיליא"]):
-        return "רבי יוסף ג'יקטיליה"
-    if any(w in full for w in ["גרנדה", "ברית מנוחה"]):
-        return "רבי אברהם מגרנדה"
-    if any(w in full for w in ["הגר\"א", "הגרא", "אליהו מוילנא"]):
-        return "הגאון מווילנא (הגר\"א)"
-    if any(w in full for w in ["בעש\"ט", "בעל שם טוב"]):
-        return "הבעל שם טוב ותלמידיו"
-    if any(w in full for w in ["תניא", "חב\"ד", "שניאור זלמן"]):
-        return "רבי שניאור זלמן מלאדי (אדמו\"ר הזקן)"
-    if any(w in full for w in ["יצירה"]):
-        return "חז\"ל ומפרשי ספר יצירה"
-    if any(w in full for w in ["בהיר"]):
-        return "רבי נחוניא בן הקנה (ספר הבהיר)"
-    return "מחברים שונים"
-
-def classify_kabbalah_book(title, path):
-    full = (title + " " + path).lower()
-    if any(w in full for w in ["זוהר", "זהר", "תיקוני", "תקוני", "ספרא דצניעותא", "אידרא", "zohar"]):
-        return "ספר הזוהר והתיקונים"
-    if any(w in full for w in ["עץ חיים", "פרי עץ חיים", "כוונות", "הכוונות", "אוצרות חיים", "מבוא שערים", "שער הפסוקים", "שער הגלגולים", "שער מאמרי", "שער רוח הקודש", "ליקוטי תורה", "ויטאל", "האר\"י", "הארי"]):
-        return "כתבי האר״י ומהרח״ו"
-    if any(w in full for w in ["פרדס", "פרדס רימונים", "אילימה", "תומר דבורה", "שיעור קומה", "אור יקר", "קורדובירו", "רמ\"ק", "רמק"]):
-        return "ספרי הרמ״ק"
-    if any(w in full for w in ["פתחי חכמה", "דעת תבונות", "אדיר במרום", "רמח\"ל", "רמחל", "לוצאטו", "מאמר העיקרים", "קל\"ח", "דרך ה'"]):
-        return "ספרי הרמח״ל"
-    if any(w in full for w in ["יצירה", "ספר יצירה"]):
-        return "ספר יצירה ומפרשיו"
-    if any(w in full for w in ["בהיר", "הבהיר", "אבולעפיה", "אבולעפיא", "גרנדה", "ברית מנוחה", "רמב\"ן", "רקנאטי", "שערי אורה", "גיקטיליא", "רזיאל"]):
-        return "קבלה קדומה וראשונים"
-    if any(w in full for w in ["בעש\"ט", "בעל שם טוב", "תניא", "חב\"ד", "חבד", "ליקוטי מוהר\"ן", "ברסלב", "קדושת לוי", "שפת אמת", "בני יששכר"]):
-        return "ספרי חסידות ופנימיות"
-    return "ספרי קבלה ודרוש"
-
-def extract_title_and_clean_text(raw_content, file_path):
-    title = None
-    title_match = re.search(r'<title>(.*?)</title>', raw_content[:3000], re.IGNORECASE)
-    if title_match:
-        t_clean = re.sub(r'<[^>]+>', '', title_match.group(1)).strip()
-        if t_clean and any('\u0590' <= c <= '\u05FF' for c in t_clean):
-            title = t_clean
-
-    clean_content = re.sub(r'<[^>]+>', ' ', raw_content)
-    clean_content = clean_content.replace('\r\n', '\n').replace('\r', '\n')
-
-    if not title:
-        lines = [line.strip() for line in clean_content.split('\n') if line.strip()][:10]
-        for line in lines:
-            if any('\u0590' <= c <= '\u05FF' for c in line) and len(line) <= 70:
-                title = line
-                break
-
-    if not title:
-        title = os.path.splitext(os.path.basename(file_path))[0]
-
-    return title.strip(), clean_content
-
-# =========================================================
-# הגדרות SQLite למאגרי ענק
-# =========================================================
-
-def get_db_connection():
-    conn = sqlite3.connect(DB_FILE, timeout=60.0, check_same_thread=False)
-    conn.execute("PRAGMA journal_mode=WAL;")
-    conn.execute("PRAGMA synchronous=NORMAL;")
-    conn.execute("PRAGMA busy_timeout=60000;")
-    conn.execute("PRAGMA cache_size=-64000;")
-    conn.execute("PRAGMA mmap_size=268435456;")
-    return conn
-
-def init_dbs_engine():
-    if os.path.exists(DB_FILE):
-        try:
-            test_conn = sqlite3.connect(DB_FILE)
-            v = test_conn.execute("PRAGMA user_version;").fetchone()[0]
-            test_conn.close()
-            if v < SCHEMA_VERSION:
-                for ext in ["", "-wal", "-shm"]:
-                    f_to_del = DB_FILE + ext
-                    if os.path.exists(f_to_del):
-                        os.remove(f_to_del)
-        except Exception:
-            pass
-
-    conn = get_db_connection()
-    c = conn.cursor()
-
-    c.execute(f"PRAGMA user_version = {SCHEMA_VERSION};")
-
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS books_meta (
-        path TEXT PRIMARY KEY,
-        title TEXT,
-        author TEXT,
-        category TEXT,
-        total_paras INTEGER,
-        toc_json TEXT,
-        mtime REAL
-    );
-    """)
-
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS paragraphs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        book_path TEXT,
-        sec_name TEXT,
-        p_num INTEGER,
-        raw_text TEXT
-    );
-    """)
-    c.execute("CREATE INDEX IF NOT EXISTS idx_para_book_p ON paragraphs(book_path, p_num);")
-
-    c.execute("""
-    CREATE VIRTUAL TABLE IF NOT EXISTS dbs_index USING fts5(
-        clean_text,
-        tokenize='unicode61'
-    );
-    """)
-
-    conn.commit()
-    conn.close()
-
-def remove_book_rows(c, clean_path):
-    c.execute("""
-    DELETE FROM dbs_index WHERE rowid IN (
-        SELECT id FROM paragraphs WHERE book_path = ?
-    );
-    """, (clean_path,))
-    c.execute("DELETE FROM paragraphs WHERE book_path = ?;", (clean_path,))
-
-# פונקציית עזר לעיבוד קובץ בודד
-def _parse_single_file(item):
-    filepath, clean_path, mtime = item
-    try:
-        raw_content = ""
-        try:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                raw_content = f.read()
-        except UnicodeDecodeError:
-            with open(filepath, 'r', encoding='cp1255', errors='ignore') as f:
-                raw_content = f.read()
-
-        book_title, clean_content = extract_title_and_clean_text(raw_content, filepath)
-        category = classify_kabbalah_book(book_title, clean_path)
-        author = extract_author(book_title, clean_path)
-
-        raw_lines = [line.strip() for line in clean_content.split('\n') if line.strip()]
-
-        paras = []
-        sections = []
-        toc = []
-        current_sec = "פתיחה"
-        buf = []
-        buf_len = 0
-
-        for line in raw_lines:
-            m_sec = SECTION_RE.match(line)
-            is_header = bool(m_sec) or (len(line) <= 40 and any(w in line for w in ["שער", "ענף", "פרק", "דף", "פתח", "סימן", "סעיף", "הלכה"]))
-
-            if is_header:
-                if buf:
-                    paras.append(" ".join(buf))
-                    sections.append(current_sec)
-                    buf = []
-                    buf_len = 0
-
-                current_sec = line[:50]
-                if current_sec not in [t[0] for t in toc]:
-                    toc.append((current_sec, len(paras)))
-                buf.append(line)
-                buf_len += len(line)
-                continue
-
-            buf.append(line)
-            buf_len += len(line)
-
-            if buf_len >= 550:
-                paras.append(" ".join(buf))
-                sections.append(current_sec)
-                buf = []
-                buf_len = 0
-
-        if buf:
-            paras.append(" ".join(buf))
-            sections.append(current_sec)
-
-        cleaned_paras = [fast_clean(p) for p in paras]
-        meta = (clean_path, book_title, author, category, len(paras), json.dumps(toc, ensure_ascii=False), mtime)
-
-        return {
-            "meta": meta,
-            "clean_path": clean_path,
-            "book_title": book_title,
-            "author": author,
-            "paras": paras,
-            "sections": sections,
-            "cleaned_paras": cleaned_paras
-        }
-    except Exception:
-        return None
-
-@st.cache_resource(show_spinner=False)
-def build_or_update_index():
-    init_dbs_engine()
-    conn = get_db_connection()
-    c = conn.cursor()
-
-    existing_rows = c.execute("SELECT path, mtime FROM books_meta").fetchall()
-    existing_map = {row[0]: row[1] for row in existing_rows}
-
-    txt_files = []
-    for root, dirs, files in os.walk(BOOKS_FOLDER):
-        for f in files:
-            if f.endswith(".txt"):
-                txt_files.append(os.path.join(root, f))
-
-    need_index = []
-    for f in txt_files:
-        clean_p = os.path.splitext(os.path.relpath(f, BOOKS_FOLDER))[0].replace("\\", " / ")
-        mtime = os.path.getmtime(f)
-        if clean_p not in existing_map or existing_map[clean_p] != mtime:
-            need_index.append((f, clean_p, mtime))
-
-    if need_index:
-        total_files = len(need_index)
-        progress_slot = st.empty()
-        status_slot = st.empty()
-        status_slot.info(f"⚡ מאנדקס בטורבו {total_files} ספרים...")
-        prog_bar = progress_slot.progress(0.0)
-
-        # הגדרות ביצועים מירביות ל-SQLite בזמן אנדוקס
-        c.execute("PRAGMA synchronous = OFF;")
-        c.execute("PRAGMA temp_store = MEMORY;")
-        c.execute("PRAGMA cache_size = -128000;")
-
-        cur_id = c.execute("SELECT COALESCE(MAX(id), 0) FROM paragraphs;").fetchone()[0]
-
-        processed_count = 0
-        last_ui_update = time.time()
-
-        c.execute("BEGIN TRANSACTION;")
-
-        # שימוש ב-ThreadPoolExecutor (בטוח לחלוטין ב-Windows וטוען במקביל מהדיסק)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
-            for parsed in executor.map(_parse_single_file, need_index):
-                if not parsed:
-                    continue
-
-                clean_path = parsed["clean_path"]
-                if clean_path in existing_map:
-                    remove_book_rows(c, clean_path)
-
-                paras = parsed["paras"]
-                sections = parsed["sections"]
-                cleaned_paras = parsed["cleaned_paras"]
-
-                para_rows = []
-                fts_rows = []
-
-                for i, p_raw in enumerate(paras):
-                    cur_id += 1
-                    para_rows.append((cur_id, clean_path, sections[i], i + 1, p_raw))
-                    fts_rows.append((cur_id, cleaned_paras[i]))
-
-                c.executemany("INSERT INTO paragraphs(id, book_path, sec_name, p_num, raw_text) VALUES (?, ?, ?, ?, ?);", para_rows)
-                c.executemany("INSERT INTO dbs_index(rowid, clean_text) VALUES (?, ?);", fts_rows)
-
-                c.execute("""
-                INSERT OR REPLACE INTO books_meta(path, title, author, category, total_paras, toc_json, mtime)
-                VALUES (?, ?, ?, ?, ?, ?, ?);
-                """, parsed["meta"])
-
-                processed_count += 1
-
-                if processed_count % 100 == 0:
-                    c.execute("COMMIT;")
-                    c.execute("BEGIN TRANSACTION;")
-
-                now = time.time()
-                if now - last_ui_update > 0.4 or processed_count == total_files:
-                    prog_bar.progress(processed_count / total_files)
-                    status_slot.caption(f"מאנדקס ({processed_count}/{total_files}): **{parsed['book_title']}** [{parsed['author']}]")
-                    last_ui_update = now
-
-        c.execute("COMMIT;")
-        c.execute("PRAGMA synchronous = NORMAL;")
-        progress_slot.empty()
-        status_slot.empty()
-
-    conn.close()
-    return True
-
-# --- בונה שאילתת DBS: מילה שלמה בלבד ---
 PREFIX_LIST = [
     "", "ו", "ד", "ש", "ה", "ב", "כ", "ל", "מ",
     "וד", "וש", "וה", "וב", "וכ", "ול", "ומ",
     "שב", "של", "שמ", "שכ", "שה"
 ]
 
-def build_dbs_query(query, search_mode, allow_prefixes, allow_acronyms, exclude_query=""):
-    words = [w.strip() for w in query.split() if w.strip()]
-    if not words:
-        return ""
+SUFFIX_LIST = [
+    "", "ים", "ות", "ין", "ה", "י", "נו", "ך", "כם", "ם", "ן",
+    "יה", "יהם", "יהן", "תא", "א", "יו", "ינו", "יך", "יכם"
+]
 
-    def process_token(tok):
-        has_wildcard = tok.endswith('*')
-        base = fast_clean(tok.rstrip('*'))
-        if not base:
-            return ""
+def expand_hebrew_word(word, opt_pref, opt_suff, opt_aramaic, opt_spelling, opt_quotes, opt_acronyms):
+    base = word.strip()
+    if not base:
+        return []
 
-        variants = [base]
-        if allow_acronyms:
-            for full_term, acr in KABBALAH_ACRONYMS.items():
-                c_acr = fast_clean(acr)
-                c_full = fast_clean(full_term)
-                if base == c_acr and c_full not in variants:
-                    variants.append(c_full)
-                elif base == c_full and c_acr not in variants:
-                    variants.append(c_acr)
+    if opt_quotes:
+        base = fast_clean(base)
 
-        sub_parts = []
-        for v in variants:
-            if ' ' in v:
-                if allow_prefixes:
-                    v_words = v.split()
-                    first_w = v_words[0]
-                    rest = " ".join(v_words[1:])
-                    phrase_variants = [f'"{pref}{first_w} {rest}"' for pref in ["", "ו", "ד", "ש", "ה", "ב", "ל", "כ", "מ"]]
-                    sub_parts.append("(" + " OR ".join(phrase_variants) + ")")
-                else:
-                    sub_parts.append(f'"{v}"')
-            elif has_wildcard:
-                sub_parts.append(f'{v}*')
-            else:
-                if allow_prefixes:
-                    pref_parts = [f'"{pref}{v}"' for pref in PREFIX_LIST]
-                    sub_parts.append("(" + " OR ".join(pref_parts) + ")")
-                else:
-                    sub_parts.append(f'"{v}"')
+    cleaned = fast_clean(base)
+    variants = {cleaned}
 
-        if len(sub_parts) > 1:
-            return "(" + " OR ".join(sub_parts) + ")"
-        return sub_parts[0]
+    if opt_acronyms:
+        for full_term, acr in KABBALAH_ACRONYMS.items():
+            c_acr = fast_clean(acr)
+            c_full = fast_clean(full_term)
+            if cleaned == c_acr:
+                variants.add(c_full)
+            elif cleaned == c_full:
+                variants.add(c_acr)
 
-    processed = [process_token(w) for w in words if process_token(w)]
-    if not processed:
-        return ""
+    if opt_aramaic:
+        for v in list(variants):
+            if v.endswith("ים"):
+                variants.add(v[:-2] + "ין")
+            elif v.endswith("ין"):
+                variants.add(v[:-2] + "ים")
+            if v.endswith("ה"):
+                variants.add(v[:-1] + "א")
+            elif v.endswith("א"):
+                variants.add(v[:-1] + "ה")
 
-    if search_mode == "ביטוי מדויק":
-        fts_q = f'"{fast_clean(query)}"'
-    elif search_mode == "לפחות אחת (או)":
-        fts_q = " OR ".join(processed)
-    else:
-        fts_q = " AND ".join(processed)
+    if opt_spelling:
+        for v in list(variants):
+            variants.add(v.replace("ו", ""))
+            variants.add(v.replace("י", ""))
+            variants.add(v.replace("עלם", "עולם").replace("עלמין", "עולמין"))
+            variants.add(v.replace("כהן", "כוהן"))
 
-    if exclude_query.strip():
-        ex_words = [fast_clean(w) for w in exclude_query.split() if w.strip()]
-        for ex in ex_words:
-            fts_q += f' NOT "{ex}"'
-
-    return fts_q
-
-def make_flexible_hebrew_pattern(term: str, wildcard: bool = False) -> str:
-    NIQQUD_AND_QUOTES = r'[\u0591-\u05C7"\'״׳`\-]*'
-    PREFIXES = r'(?:[ומשכלבהד][\u0591-\u05C7]*){0,3}'
-
-    words = term.split()
-    word_patterns = []
-    for w in words:
-        letters = list(w)
-        if not letters:
+    final_fts_tokens = []
+    for var in variants:
+        if " " in var:
+            final_fts_tokens.append(f'"{var}"')
             continue
-        char_pat = NIQQUD_AND_QUOTES.join(re.escape(ch) for ch in letters) + NIQQUD_AND_QUOTES
-        word_patterns.append(char_pat)
 
-    if not word_patterns:
-        return ""
+        var_clean = fast_clean(var)
+        prefixes = PREFIX_LIST if opt_pref else [""]
+        suffixes = SUFFIX_LIST if opt_suff else [""]
 
-    phrase_pat = r'[\s\-]+'.join(word_patterns)
+        sub_words = []
+        for p in prefixes:
+            for s in suffixes:
+                sub_words.append(f'"{p}{var_clean}{s}"')
 
-    if wildcard:
-        return rf'(?<![א-ת]){PREFIXES}{phrase_pat}[א-ת\u0591-\u05C7]*'
-    else:
-        return rf'(?<![א-ת]){PREFIXES}{phrase_pat}(?![א-ת])'
+        if len(sub_words) > 1:
+            final_fts_tokens.append("(" + " OR ".join(sub_words[:40]) + ")")
+        elif sub_words:
+            final_fts_tokens.append(sub_words[0])
 
-def highlight_dbs_matches(text, query_words, allow_acronyms):
-    if not query_words:
+    return final_fts_tokens
+
+SENTENCE_SPLIT_RE = re.compile(r'[\.\:\?\!\;\n]')
+
+def check_proximity_full(raw_text, col_term_groups, scope_type, dist_1_2, dist_2_3, dist_3_4, enforce_order):
+    if scope_type == "בתוך מסמך":
+        return True
+
+    text_blocks = [raw_text] if scope_type != "בתוך משפט" else [s for s in SENTENCE_SPLIT_RE.split(raw_text) if s.strip()]
+
+    for block in text_blocks:
+        tokens = [fast_clean(t) for t in block.split() if t]
+        if not tokens:
+            continue
+
+        col_pos_lists = []
+        possible = True
+
+        for terms in col_term_groups:
+            matched_pos = []
+            for term in terms:
+                target = fast_clean(term.rstrip("*"))
+                is_wc = term.endswith("*")
+                for idx, tok in enumerate(tokens):
+                    if (is_wc and tok.startswith(target)) or (not is_wc and target in tok):
+                        matched_pos.append(idx)
+            if not matched_pos:
+                possible = False
+                break
+            col_pos_lists.append(sorted(list(set(matched_pos))))
+
+        if not possible:
+            continue
+
+        if scope_type in ["בתוך פסקה", "בתוך משפט"]:
+            if not enforce_order:
+                return True
+
+        import itertools
+        for combo in itertools.product(*col_pos_lists):
+            if enforce_order and list(combo) != sorted(combo):
+                continue
+
+            valid_dist = True
+            if scope_type == "טווח מילים":
+                pairs = [(0, 1, dist_1_2), (1, 2, dist_2_3), (2, 3, dist_3_4)]
+                for i, j, max_d in pairs:
+                    if len(combo) > j:
+                        if abs(combo[j] - combo[i]) > max_d:
+                            valid_dist = False
+                            break
+
+            if valid_dist:
+                return True
+
+    return False
+
+def highlight_all(text, terms):
+    if not terms:
         return text
-
-    terms_to_find = set()
-    for w in query_words:
-        has_wildcard = w.endswith('*')
-        clean_w = fast_clean(w.rstrip('*'))
-        if clean_w:
-            terms_to_find.add((clean_w, has_wildcard))
-            if allow_acronyms:
-                for full_t, acr in KABBALAH_ACRONYMS.items():
-                    c_acr = fast_clean(acr)
-                    c_full = fast_clean(full_t)
-                    if clean_w == c_acr:
-                        terms_to_find.add((c_full, False))
-                    elif clean_w == c_full:
-                        terms_to_find.add((c_acr, False))
-
-    if not terms_to_find:
+    clean_terms = sorted(list(set(fast_clean(t.rstrip("*")) for t in terms if len(fast_clean(t)) >= 2)), key=len, reverse=True)
+    if not clean_terms:
         return text
-
-    sorted_terms = sorted(list(terms_to_find), key=lambda x: len(x[0]), reverse=True)
-
-    patterns = []
-    for term, wildcard in sorted_terms:
-        pat = make_flexible_hebrew_pattern(term, wildcard)
-        if pat:
-            patterns.append(pat)
-
-    if not patterns:
-        return text
-
-    combined_regex = "(" + "|".join(patterns) + ")"
+    pattern = rf'(?<![א-ת])(?:[ומשכלבהד]{{0,3}})?({"|".join(re.escape(t) for t in clean_terms)})[א-ת]*(?![א-ת])'
     try:
-        return re.sub(combined_regex, r'<span class="search-highlight">\g<0></span>', text)
+        return re.sub(pattern, r'<span class="search-highlight">\g<0></span>', text)
     except Exception:
         return text
 
-def check_proximity_in_text(raw_text, query_words, max_distance):
-    tokens = [fast_clean(t) for t in raw_text.split() if t]
-    positions = []
-    for w in query_words:
-        target = fast_clean(w.rstrip('*'))
-        pos_list = [i for i, tok in enumerate(tokens) if target in tok]
-        if not pos_list:
-            return False
-        positions.append(pos_list)
-
-    min_span = 999999
-    import itertools
-    for combo in itertools.product(*positions):
-        span = max(combo) - min(combo)
-        if span < min_span:
-            min_span = span
-    return min_span <= max_distance
-
-# הפעלת אינדקס
-build_or_update_index()
-conn = get_db_connection()
-
-books_meta_rows = conn.execute("SELECT path, title, category, total_paras, toc_json, author FROM books_meta ORDER BY title").fetchall()
-books_by_path = {row[0]: {"title": row[1], "category": row[2], "total": row[3], "toc": row[4], "author": row[5]} for row in books_meta_rows}
-
-all_categories = sorted(list(set(b["category"] for b in books_by_path.values()))) if books_by_path else []
-all_authors = sorted(list(set(b["author"] for b in books_by_path.values()))) if books_by_path else []
-
-# --- סרגל צד ---
+# סרגל צד
 with st.sidebar:
-    st.markdown("### ⚡ מאגר ענק (DBS)")
-    st.markdown(f"**ספרים באינדקס המהיר:** `{len(books_by_path)}`")
-    st.markdown(f"**מחברים מזוהים:** `{len(all_authors)}`")
-    st.markdown(f"**מדורים במאגר:** `{len(all_categories)}`")
+    st.markdown("### 📜 מאגר תורני")
+    st.markdown(f"**ספרים במאגר:** `{len(books_by_path):,}`")
+    num_curr_sel = len(st.session_state["selected_books"])
+    st.markdown(f"**ספרים פעילים בחיפוש:** `{num_curr_sel:,}`")
+    st.markdown("---")
+    st.markdown("#### 🕒 שאילתות קודמות")
+    if st.session_state["search_history"]:
+        for h_item in reversed(st.session_state["search_history"][-6:]):
+            st.caption(f"📌 {h_item}")
+    else:
+        st.caption("אין שאילתות קודמות.")
 
-    if st.button("🔄 בנה מחדש אינדקס מלא", use_container_width=True):
-        conn.close()
-        for ext in ["", "-wal", "-shm"]:
-            fpath = DB_FILE + ext
-            if os.path.exists(fpath):
-                try:
-                    os.remove(fpath)
-                except Exception:
-                    pass
-        st.cache_resource.clear()
+# כותרת ראשית
+st.markdown("# 💎 מַטְמוֹנִים · חיפוש טבלאי פרויקט השו״ת")
+
+# בר ניהול מאגרים ובחירת ספרים
+bar_c1, bar_c2, bar_c3 = st.columns([1.6, 2.5, 0.8])
+with bar_c1:
+    if st.button("📚 המאגרים המשתתפים (עץ מקורות)", use_container_width=True):
+        open_corpus_dialog()
+
+with bar_c2:
+    sel_count = len(st.session_state["selected_books"])
+    tot_count = len(books_by_path)
+    if sel_count == tot_count:
+        st.success(f"חיפוש פעיל ב**כל המאגרים** ({tot_count:,} ספרים)")
+    elif sel_count == 0:
+        st.error("⚠️ לא נבחרו מאגרים! לחץ על הכפתור ובחר לפחות מאגר אחד.")
+    else:
+        st.warning(f"חיפוש ממוקד ב-**{sel_count:,}** מתוך {tot_count:,} ספרים שנבחרו בעץ המקורות")
+
+with bar_c3:
+    if st.button("🧹 ניקוי הכל", use_container_width=True):
+        st.session_state["clear_inputs_flag"] = not st.session_state["clear_inputs_flag"]
         st.rerun()
 
-    st.markdown("---")
-    st.markdown("#### 📥 הוספת ספרים")
-    uploaded_files = st.file_uploader("העלאת קובצי TXT או ZIP:", type=["txt", "zip"], accept_multiple_files=True)
-    if uploaded_files:
-        added = 0
-        for uf in uploaded_files:
-            if uf.name.endswith(".zip"):
-                with zipfile.ZipFile(uf, "r") as z:
-                    for filename in z.namelist():
-                        if filename.endswith(".txt") and not filename.startswith("__MACOSX"):
-                            z.extract(filename, BOOKS_FOLDER)
-                            added += 1
-            elif uf.name.endswith(".txt"):
-                fpath = os.path.join(BOOKS_FOLDER, uf.name)
-                with open(fpath, "wb") as f:
-                    f.write(uf.getbuffer())
-                added += 1
-        if added > 0:
-            st.success(f"נוספו {added} ספרים! מעדכן אינדקס...")
-            st.cache_resource.clear()
-            st.rerun()
+clear_salt = "1" if st.session_state["clear_inputs_flag"] else "0"
 
-# --- כותרת ומעבר מצבים ---
-header_col1, header_col2 = st.columns([2, 1.2])
-with header_col1:
-    st.markdown("# 💎 מַטְמוֹנִים · מהדורת המהדיר")
-    st.caption("מנוע DBS למאגרי ענק (2,000+ ספרים) · פילוח מחברים ומדורים · שולחן המהדיר")
+with st.form("reshut_search_form"):
+    st.markdown("<div class='section-title'>מרכיבי החיפוש (טורים: 'וגם' | שורות: 'או' | רווח: מעבר לטור הבא)</div>", unsafe_allow_html=True)
+    
+    c1, c2, c3, c4 = st.columns(4)
+    
+    # --- טור 1 ---
+    with c1:
+        st.markdown("<div class='col-header-box'>[טור 1] מרכיב 1</div>", unsafe_allow_html=True)
+        w1_1 = st.text_input("inp_1_1", key=f"w1_1_{clear_salt}", placeholder="מילה / ביטוי", label_visibility="collapsed")
+        st.markdown("<div class='or-separator'>או</div>", unsafe_allow_html=True)
+        w1_2 = st.text_input("inp_1_2", key=f"w1_2_{clear_salt}", placeholder="מילה חלופית", label_visibility="collapsed")
+        st.markdown("<div class='or-separator'>או</div>", unsafe_allow_html=True)
+        w1_3 = st.text_input("inp_1_3", key=f"w1_3_{clear_salt}", placeholder="מילה חלופית", label_visibility="collapsed")
+        st.markdown("<div class='or-separator'>או</div>", unsafe_allow_html=True)
+        w1_4 = st.text_input("inp_1_4", key=f"w1_4_{clear_salt}", placeholder="מילה חלופית", label_visibility="collapsed")
 
-with header_col2:
-    mode_options = ["🔍 חיפוש במאגר", "📖 בית מדרש לעיון", "✍️ שולחן המהדיר"]
-    current_idx = mode_options.index(st.session_state["app_mode"]) if st.session_state["app_mode"] in mode_options else 0
-    mode_choice = st.radio(
-        "מצב עבודה:",
-        mode_options,
-        horizontal=True,
-        index=current_idx,
-        label_visibility="collapsed"
-    )
-    st.session_state["app_mode"] = mode_choice
+        with st.popover("⚙️ מאפייני מרכיב 1", use_container_width=True):
+            c1_pref = st.checkbox("ק/ד קידומות (ומשכלב\"ד)", value=True, key="c1_p")
+            c1_suff = st.checkbox("ס/מ סיומות (ים, ות, נו...)", value=False, key="c1_s")
+            c1_spelling = st.checkbox("ח כתיב מלא/חסר (אהו\"י)", value=True, key="c1_h")
+            c1_aramaic = st.checkbox("ל סיומות ארמית (ין ↔ ים)", value=True, key="c1_l")
+            c1_quotes = st.checkbox("ג עם/בלי גרשיים", value=True, key="c1_g")
+            c1_acronyms = st.checkbox("כולל ראשי תיבות", value=True, key="c1_rt")
+            c1_not = st.checkbox("🚫 שלילת מרכיב זה (NOT)", value=False, key="c1_not")
 
-st.markdown("<div style='height: 6px;'></div>", unsafe_allow_html=True)
+    # --- טור 2 ---
+    with c2:
+        st.markdown("<div class='col-header-box'>וגם ➔ [טור 2] מרכיב 2</div>", unsafe_allow_html=True)
+        w2_1 = st.text_input("inp_2_1", key=f"w2_1_{clear_salt}", placeholder="מילה / ביטוי", label_visibility="collapsed")
+        st.markdown("<div class='or-separator'>או</div>", unsafe_allow_html=True)
+        w2_2 = st.text_input("inp_2_2", key=f"w2_2_{clear_salt}", placeholder="מילה חלופית", label_visibility="collapsed")
+        st.markdown("<div class='or-separator'>או</div>", unsafe_allow_html=True)
+        w2_3 = st.text_input("inp_2_3", key=f"w2_3_{clear_salt}", placeholder="מילה חלופית", label_visibility="collapsed")
+        st.markdown("<div class='or-separator'>או</div>", unsafe_allow_html=True)
+        w2_4 = st.text_input("inp_2_4", key=f"w2_4_{clear_salt}", placeholder="מילה חלופית", label_visibility="collapsed")
 
-# ==========================================
-# מצב 1: חיפוש במאגר (DBS Grade Search)
-# ==========================================
-if st.session_state["app_mode"] == "🔍 חיפוש במאגר":
-    filt_col1, filt_col2, filt_col3 = st.columns([1.5, 1.5, 3])
-    with filt_col1:
-        author_filter = st.selectbox("מחבר:", options=["כל המחברים"] + all_authors, index=0)
-    with filt_col2:
-        cat_filter = st.selectbox("מדור קבלי:", options=["הכל"] + all_categories, index=0)
-    with filt_col3:
-        available_books_search = [
-            k for k in books_by_path.keys() 
-            if (author_filter == "כל המחברים" or books_by_path[k]["author"] == author_filter)
-            and (cat_filter == "הכל" or books_by_path[k]["category"] == cat_filter)
-        ]
-        sorted_keys = sorted(available_books_search, key=lambda k: books_by_path[k]['title'])
-        selected_search_book = st.selectbox(
-            "ספר מסוים (אופציונלי):",
-            options=sorted_keys,
-            index=None,
-            placeholder="🔍 בחר ספר לחיפוש ממוקד... (או השאר ריק)",
-            format_func=lambda k: f"{books_by_path[k]['title']} · [{books_by_path[k]['author']}]"
-        )
+        with st.popover("⚙️ מאפייני מרכיב 2", use_container_width=True):
+            c2_pref = st.checkbox("ק/ד קידומות (ומשכלב\"ד)", value=True, key="c2_p")
+            c2_suff = st.checkbox("ס/מ סיומות (ים, ות, נו...)", value=False, key="c2_s")
+            c2_spelling = st.checkbox("ח כתיב מלא/חסר (אהו\"י)", value=True, key="c2_h")
+            c2_aramaic = st.checkbox("ל סיומות ארמית (ין ↔ ים)", value=True, key="c2_l")
+            c2_quotes = st.checkbox("ג עם/בלי גרשיים", value=True, key="c2_g")
+            c2_acronyms = st.checkbox("כולל ראשי תיבות", value=True, key="c2_rt")
+            c2_not = st.checkbox("🚫 שלילת מרכיב זה (NOT)", value=False, key="c2_not")
 
-    with st.form("search_form"):
-        col_q, col_ex = st.columns([4, 2])
-        with col_q:
-            query = st.text_input("שאילתת חיפוש DBS (מילים שלמות):", placeholder="הקלד מילים (למשל: ז\"א , אדם קדמון , ספיר*)...")
-        with col_ex:
-            exclude_query = st.text_input("החרג מילים (NOT):", placeholder="מילים שלא יופיעו...")
+    # --- טור 3 ---
+    with c3:
+        st.markdown("<div class='col-header-box'>וגם ➔ [טור 3] מרכיב 3</div>", unsafe_allow_html=True)
+        w3_1 = st.text_input("inp_3_1", key=f"w3_1_{clear_salt}", placeholder="(אופציונלי)", label_visibility="collapsed")
+        st.markdown("<div class='or-separator'>או</div>", unsafe_allow_html=True)
+        w3_2 = st.text_input("inp_3_2", key=f"w3_2_{clear_salt}", placeholder="מילה חלופית", label_visibility="collapsed")
+        st.markdown("<div class='or-separator'>או</div>", unsafe_allow_html=True)
+        w3_3 = st.text_input("inp_3_3", key=f"w3_3_{clear_salt}", placeholder="מילה חלופית", label_visibility="collapsed")
+        st.markdown("<div class='or-separator'>או</div>", unsafe_allow_html=True)
+        w3_4 = st.text_input("inp_3_4", key=f"w3_4_{clear_salt}", placeholder="מילה חלופית", label_visibility="collapsed")
 
-        c1, c2, c3, c4 = st.columns(4)
-        with c1:
-            allow_prefixes = st.checkbox("אותיות שימוש תקניות (ומשכלב\"ד)", value=True)
-        with c2:
-            allow_acronyms = st.checkbox("פענוח קיצורי קבלה חכם", value=True)
-        with c3:
-            search_mode = st.selectbox("אופן החיפוש:", ["כל המילים (וגם)", "מרחק בין מילים", "ביטוי מדויק", "לפחות אחת (או)"])
-        with c4:
-            limit_choice = st.selectbox("מגבלת תוצאות:", ["500", "1,000", "2,000", "5,000", "ללא הגבלה"], index=1)
+        with st.popover("⚙️ מאפייני מרכיב 3", use_container_width=True):
+            c3_pref = st.checkbox("ק/ד קידומות (ומשכלב\"ד)", value=True, key="c3_p")
+            c3_suff = st.checkbox("ס/מ סיומות (ים, ות, נו...)", value=False, key="c3_s")
+            c3_spelling = st.checkbox("ח כתיב מלא/חסר (אהו\"י)", value=True, key="c3_h")
+            c3_aramaic = st.checkbox("ל סיומות ארמית (ין ↔ ים)", value=True, key="c3_l")
+            c3_quotes = st.checkbox("ג עם/בלי גרשיים", value=True, key="c3_g")
+            c3_acronyms = st.checkbox("כולל ראשי תיבות", value=True, key="c3_rt")
+            c3_not = st.checkbox("🚫 שלילת מרכיב זה (NOT)", value=False, key="c3_not")
 
-        max_distance = 7
-        if search_mode == "מרחק בין מילים":
-            max_distance = st.slider("מרחק מילים מקסימלי (NEAR):", 1, 40, 7)
+    # --- טור 4 ---
+    with c4:
+        st.markdown("<div class='col-header-box'>וגם ➔ [טור 4] מרכיב 4</div>", unsafe_allow_html=True)
+        w4_1 = st.text_input("inp_4_1", key=f"w4_1_{clear_salt}", placeholder="(אופציונלי)", label_visibility="collapsed")
+        st.markdown("<div class='or-separator'>או</div>", unsafe_allow_html=True)
+        w4_2 = st.text_input("inp_4_2", key=f"w4_2_{clear_salt}", placeholder="מילה חלופית", label_visibility="collapsed")
+        st.markdown("<div class='or-separator'>או</div>", unsafe_allow_html=True)
+        w4_3 = st.text_input("inp_4_3", key=f"w4_3_{clear_salt}", placeholder="מילה חלופית", label_visibility="collapsed")
+        st.markdown("<div class='or-separator'>או</div>", unsafe_allow_html=True)
+        w4_4 = st.text_input("inp_4_4", key=f"w4_4_{clear_salt}", placeholder="מילה חלופית", label_visibility="collapsed")
 
-        submitted = st.form_submit_button("⚡ חפש במהירות הבזק", use_container_width=True)
+        with st.popover("⚙️ מאפייני מרכיב 4", use_container_width=True):
+            c4_pref = st.checkbox("ק/ד קידומות (ומשכלב\"ד)", value=True, key="c4_p")
+            c4_suff = st.checkbox("ס/מ סיומות (ים, ות, נו...)", value=False, key="c4_s")
+            c4_spelling = st.checkbox("ח כתיב מלא/חסר (אהו\"י)", value=True, key="c4_h")
+            c4_aramaic = st.checkbox("ל סיומות ארמית (ין ↔ ים)", value=True, key="c4_l")
+            c4_quotes = st.checkbox("ג עם/בלי גרשיים", value=True, key="c4_g")
+            c4_acronyms = st.checkbox("כולל ראשי תיבות", value=True, key="c4_rt")
+            c4_not = st.checkbox("🚫 שלילת מרכיב זה (NOT)", value=False, key="c4_not")
 
-    if query and (submitted or "last_query" in st.session_state):
-        st.session_state["last_query"] = query
+    st.markdown("<div style='height: 14px;'></div>", unsafe_allow_html=True)
+
+    # ---------------- 2. מרחקים ----------------
+    st.markdown("<div class='section-title'>מרחקים ותחום החיפוש</div>", unsafe_allow_html=True)
+    m_row1, m_row2 = st.columns([2, 3])
+    with m_row1:
+        scope_choice = st.radio("תחום החיפוש:", ["בתוך פסקה", "טווח מילים", "בתוך משפט", "בתוך מסמך"], horizontal=True, index=0)
+    with m_row2:
+        dist_cols = st.columns(3)
+        with dist_cols[0]:
+            dist_1_2 = st.number_input("בין טור 1 ל-2:", min_value=1, max_value=150, value=10, disabled=(scope_choice != "טווח מילים"))
+        with dist_cols[1]:
+            dist_2_3 = st.number_input("בין טור 2 ל-3:", min_value=1, max_value=150, value=10, disabled=(scope_choice != "טווח מילים"))
+        with dist_cols[2]:
+            dist_3_4 = st.number_input("בין טור 3 ל-4:", min_value=1, max_value=150, value=10, disabled=(scope_choice != "טווח מילים"))
+
+    rc1, rc2 = st.columns([2, 1])
+    with rc1:
+        enforce_order = st.checkbox("שמור על סדר המרכיבים (טור 1 ואז טור 2 וכו')", value=False)
+    with rc2:
+        limit_sel = st.selectbox("מגבלת תוצאות:", ["500", "1,000", "2,000", "5,000", "ללא הגבלה"], index=1)
+
+    submitted = st.form_submit_button("⚡ בצע חיפוש (FTS)", use_container_width=True)
+
+cols_config = [
+    {
+        "words": [w.strip() for w in [w1_1, w1_2, w1_3, w1_4] if w.strip()],
+        "pref": c1_pref, "suff": c1_suff, "spell": c1_spelling, "aram": c1_aramaic, "quot": c1_quotes, "acr": c1_acronyms, "not": c1_not
+    },
+    {
+        "words": [w.strip() for w in [w2_1, w2_2, w2_3, w2_4] if w.strip()],
+        "pref": c2_pref, "suff": c2_suff, "spell": c2_spelling, "aram": c2_aramaic, "quot": c2_quotes, "acr": c2_acronyms, "not": c2_not
+    },
+    {
+        "words": [w.strip() for w in [w3_1, w3_2, w3_3, w3_4] if w.strip()],
+        "pref": c3_pref, "suff": c3_suff, "spell": c3_spelling, "aram": c3_aramaic, "quot": c3_quotes, "acr": c3_acronyms, "not": c3_not
+    },
+    {
+        "words": [w.strip() for w in [w4_1, w4_2, w4_3, w4_4] if w.strip()],
+        "pref": c4_pref, "suff": c4_suff, "spell": c4_spelling, "aram": c4_aramaic, "quot": c4_quotes, "acr": c4_acronyms, "not": c4_not
+    },
+]
+
+active_cols_cfg = [c for c in cols_config if len(c["words"]) > 0]
+
+if submitted:
+    selected_set = st.session_state["selected_books"]
+    if not selected_set:
+        st.error("⚠️ לא נבחרו מאגרים בעץ המקורות! לחץ על 'המאגרים המשתתפים' וסמן לפחות מאגר אחד.")
+    elif not active_cols_cfg:
+        st.warning("נא להזין לפחות מילה אחת באחד הטורים.")
+    else:
         t_start = time.time()
+        
+        history_desc = " + ".join(["/".join(c["words"]) for c in active_cols_cfg])
+        if history_desc not in st.session_state["search_history"]:
+            st.session_state["search_history"].append(history_desc)
 
-        fts_expression = build_dbs_query(query, search_mode, allow_prefixes, allow_acronyms, exclude_query)
+        col_fts_clauses = []
+        all_terms_flat = []
+        positive_cols_words = []
 
+        for col_cfg in active_cols_cfg:
+            col_tokens = []
+            for word in col_cfg["words"]:
+                all_terms_flat.append(word)
+                expanded = expand_hebrew_word(
+                    word,
+                    col_cfg["pref"],
+                    col_cfg["suff"],
+                    col_cfg["aram"],
+                    col_cfg["spell"],
+                    col_cfg["quot"],
+                    col_cfg["acr"]
+                )
+                if expanded:
+                    col_tokens.extend(expanded)
+
+            if col_tokens:
+                sub_clause = "(" + " OR ".join(col_tokens) + ")"
+                if col_cfg["not"]:
+                    col_fts_clauses.append(f"NOT {sub_clause}")
+                else:
+                    col_fts_clauses.append(sub_clause)
+                    positive_cols_words.append(col_cfg["words"])
+
+        fts_query = " AND ".join(col_fts_clauses)
         limit_map = {"500": 500, "1,000": 1000, "2,000": 2000, "5,000": 5000, "ללא הגבלה": 50000}
-        max_rows = limit_map.get(limit_choice, 1000)
+        max_rows = limit_map.get(limit_sel, 1000)
 
-        sql_base = """
+        sql = """
         SELECT p.book_path, b.title, b.author, b.category, b.total_paras, p.sec_name, p.p_num, p.raw_text
         FROM dbs_index d
         JOIN paragraphs p ON d.rowid = p.id
         JOIN books_meta b ON p.book_path = b.path
         WHERE d.clean_text MATCH ?
         """
-        params = [fts_expression]
+        params = [fts_query]
 
-        if selected_search_book:
-            sql_base += " AND p.book_path = ?"
-            params.append(selected_search_book)
+        is_partial_selection = len(selected_set) < len(books_by_path)
+        if is_partial_selection and len(selected_set) <= 500:
+            sql += f" AND p.book_path IN ({','.join(['?']*len(selected_set))})"
+            params.extend(list(selected_set))
 
-        if author_filter != "כל המחברים":
-            sql_base += " AND b.author = ?"
-            params.append(author_filter)
-
-        if cat_filter != "הכל":
-            sql_base += " AND b.category = ?"
-            params.append(cat_filter)
-
-        sql_base += " LIMIT ?;"
+        sql += " LIMIT ?;"
         params.append(max_rows)
 
         results = []
         try:
             cur = conn.cursor()
-            cur.execute(sql_base, params)
-            raw_hits = cur.fetchall()
+            cur.execute(sql, params)
+            hits = cur.fetchall()
 
-            q_words = [w.strip() for w in query.split() if w.strip()]
+            for h in hits:
+                b_path = h[0]
+                if is_partial_selection and b_path not in selected_set:
+                    continue
 
-            for h in raw_hits:
-                if search_mode == "מרחק בין מילים" and len(q_words) >= 2:
-                    if not check_proximity_in_text(h[7], q_words, max_distance):
-                        continue
+                raw_text = h[7]
+                if not check_proximity_full(raw_text, positive_cols_words, scope_choice, dist_1_2, dist_2_3, dist_3_4, enforce_order):
+                    continue
 
                 results.append({
-                    "book_path": h[0],
+                    "book_path": b_path,
                     "title": h[1],
                     "author": h[2],
                     "category": h[3],
                     "total_p": h[4],
                     "section": h[5],
                     "p_num": h[6],
-                    "raw_text": h[7]
+                    "raw_text": raw_text,
                 })
         except sqlite3.OperationalError as e:
             st.error(f"שגיאת תחביר בחיפוש: {e}")
 
         elapsed = time.time() - t_start
-        total_results = len(results)
+        st.session_state["results"] = results
+        st.session_state["terms"] = all_terms_flat
+        st.session_state["elapsed"] = elapsed
 
-        if total_results == max_rows and limit_choice != "ללא הגבלה":
-            st.markdown(f"#### נמצאו `{total_results}` תוצאות (הוגבל ל-{limit_choice} הראשונות) בתוך `{elapsed:.3f}` שניות")
-        else:
-            st.markdown(f"#### נמצאו `{total_results}` תוצאות בתוך `{elapsed:.3f}` שניות (מהירות DBS)")
+if "results" in st.session_state:
+    res = st.session_state["results"]
+    terms = st.session_state.get("terms", [])
+    elapsed = st.session_state.get("elapsed", 0.0)
 
-        if total_results > 0:
-            PAGE_SIZE = 20
-            total_pages = max(1, (total_results + PAGE_SIZE - 1) // PAGE_SIZE)
-            p_col1, p_col2 = st.columns([1, 4])
-            with p_col1:
-                current_page = st.number_input(f"עמוד (מתוך {total_pages}):", 1, total_pages, 1, key="res_page")
+    st.markdown(f"#### 🔍 נמצאו `{len(res)}` תוצאות מדויקות בתוך `{elapsed:.3f}` שניות")
 
-            start_idx = (current_page - 1) * PAGE_SIZE
-            end_idx = min(start_idx + PAGE_SIZE, total_results)
+    if res:
+        PAGE_SIZE = 25
+        total_pages = max(1, (len(res) + PAGE_SIZE - 1) // PAGE_SIZE)
+        p_c1, _ = st.columns([1, 4])
+        with p_c1:
+            cur_p = st.number_input(f"עמוד (מתוך {total_pages}):", 1, total_pages, 1)
 
-            q_words = [w.strip() for w in query.split() if w.strip()]
+        start = (cur_p - 1) * PAGE_SIZE
+        end = min(start + PAGE_SIZE, len(res))
 
-            for idx, r in enumerate(results[start_idx:end_idx]):
-                snippet = highlight_dbs_matches(r["raw_text"], q_words, allow_acronyms)
-                st.markdown(f"""
+        for idx, r in enumerate(res[start:end]):
+            snippet = highlight_all(r["raw_text"], terms)
+            st.markdown(
+                f"""
                 <div class="result-card">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                         <div>
                             <span class="badge-book">📖 {r['title']}</span>
-                            <span class="badge-author">✍️ {r['author']}</span>
                             <span class="badge-section">📍 {r['section']}</span>
-                            <span style="font-size: 13px; color: #57534e;">מדור: {r['category']}</span>
+                            <span style="font-size: 13px; color: #64748b; font-weight: 600;">מחבר: {r['author']} · מדור: {r['category']}</span>
                         </div>
-                        <span style="font-size: 13px; color: #78716c; font-weight: 600;">פסקה {r['p_num']} מתוך {r['total_p']}</span>
+                        <span style="font-size: 13px; color: #94a3b8; font-weight: 700;">פסקה {r['p_num']} מתוך {r['total_p']}</span>
                     </div>
-                    <div class="snippet-text">
-                        {snippet}
-                    </div>
+                    <div class="snippet-text">{snippet}</div>
                 </div>
-                """, unsafe_allow_html=True)
+                """,
+                unsafe_allow_html=True,
+            )
 
-                btn1, btn2, btn3, btn4 = st.columns([1, 1.4, 1.4, 2])
-                with btn1:
-                    if st.button("📖 פתח לעיון", key=f"open_reader_{start_idx + idx}", use_container_width=True):
-                        st.session_state["app_mode"] = "📖 בית מדרש לעיון"
-                        st.session_state["reader_author"] = r["author"]
-                        st.session_state["reader_category"] = r["category"]
-                        st.session_state["reader_book_path"] = r["book_path"]
-                        st.session_state["reader_target_p"] = r["p_num"]
-                        st.session_state["reader_jump"] = (r["p_num"] - 1) // PARAS_PER_PAGE + 1
-                        st.rerun()
-
-                with btn2:
-                    with st.popover("📋 העתק למהדורה"):
-                        footnote_citation = f'[{r["title"]}, {r["section"]}]: "{r["raw_text"].strip()}"'
-                        st.text_area("ציטוט להערת שוליים:", footnote_citation, height=90)
-
-                with btn3:
-                    if st.button("⚖️ שלח לשולחן ההשוואה", key=f"send_diff_{start_idx + idx}", use_container_width=True):
-                        st.session_state["diff_text_a"] = r["raw_text"]
-                        st.session_state["app_mode"] = "✍️ שולחן המהדיר"
-                        st.toast("הקטע נשלח להשוואת נוסחאות!")
-                        st.rerun()
-
-                with btn4:
-                    with st.expander("🔍 הצג הקשר מורחב"):
-                        cur = conn.cursor()
-                        cur.execute("""
-                        SELECT p_num, raw_text FROM paragraphs 
-                        WHERE book_path = ? AND p_num IN (?, ?)
-                        ORDER BY p_num ASC;
-                        """, (r["book_path"], r["p_num"] - 1, r["p_num"] + 1))
-                        neighbors = {row[0]: row[1] for row in cur.fetchall()}
-
-                        if (r["p_num"] - 1) in neighbors:
-                            st.markdown(f"<p style='color: #57534e; font-size: 14.5px;'>[{r['p_num'] - 1}] {neighbors[r['p_num'] - 1]}</p>", unsafe_allow_html=True)
-                        st.markdown(f"<div style='background-color: #fefce8; border-right: 4px solid #eab308; padding: 10px; border-radius: 6px; margin: 6px 0;'>{snippet}</div>", unsafe_allow_html=True)
-                        if (r["p_num"] + 1) in neighbors:
-                            st.markdown(f"<p style='color: #57534e; font-size: 14.5px;'>[{r['p_num'] + 1}] {neighbors[r['p_num'] + 1]}</p>", unsafe_allow_html=True)
-
-                st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
-
-# ==========================================
-# מצב 2: בית מדרש לעיון (עם קפיצה למראה מקום)
-# ==========================================
-elif st.session_state["app_mode"] == "📖 בית מדרש לעיון":
-    if not books_by_path:
-        st.warning("אין עדיין ספרים באינדקס.")
-    else:
-        with st.expander("🎯 קפיצה ישירה למקור (לפי ספר, פרק, שער, סימן, סעיף, דף או מחבר)", expanded=False):
-            jump_c1, jump_c2 = st.columns([5, 1])
-            with jump_c1:
-                jump_input = st.text_input("הקלד מראה מקום:", placeholder="למשל: עץ חיים שער א ענף ב | פרדס שער כג | רמח\"ל פתחי חכמה פתח ה | דף יד")
-            with jump_c2:
-                st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-                do_jump = st.button("קפוץ ישירות 🚀", use_container_width=True)
-
-            if do_jump and jump_input.strip():
-                clean_jump = fast_clean(jump_input)
-                matched_book_path = None
-                
-                for b_path, b_info in books_by_path.items():
-                    c_title = fast_clean(b_info["title"])
-                    if c_title in clean_jump or any(w in clean_jump for w in c_title.split() if len(w) >= 3):
-                        matched_book_path = b_path
-                        break
-
-                if not matched_book_path:
-                    matched_book_path = st.session_state.get("reader_book_path") or list(books_by_path.keys())[0]
-
-                cur = conn.cursor()
-                sec_match = SECTION_RE.search(jump_input)
-                target_sec_keyword = sec_match.group(0) if sec_match else jump_input
-
-                cur.execute("""
-                SELECT p_num, sec_name FROM paragraphs 
-                WHERE book_path = ? AND sec_name LIKE ? 
-                LIMIT 1;
-                """, (matched_book_path, f"%{target_sec_keyword}%"))
-                jump_res = cur.fetchone()
-
-                if not jump_res:
-                    cur.execute("""
-                    SELECT p_num, sec_name FROM paragraphs 
-                    WHERE book_path = ? AND raw_text LIKE ? 
-                    LIMIT 1;
-                    """, (matched_book_path, f"%{target_sec_keyword}%"))
-                    jump_res = cur.fetchone()
-
-                if jump_res:
-                    p_target = jump_res[0]
-                    st.session_state["reader_book_path"] = matched_book_path
-                    st.session_state["reader_target_p"] = p_target
-                    st.session_state["reader_jump"] = (p_target - 1) // PARAS_PER_PAGE + 1
-                    st.toast(f"נמצא: {books_by_path[matched_book_path]['title']} · {jump_res[1]}")
-                    st.rerun()
-                else:
-                    st.warning("לא נמצא מראה מקום תואם. נסה לפרט שם שער, ענף או פרק מדויקים.")
-
-        col_auth, col_cat, col_book, col_toc, col_font = st.columns([1.3, 1.3, 2, 1.8, 0.8])
-
-        with col_auth:
-            auth_opts = ["כל המחברים"] + all_authors
-            cur_auth_idx = auth_opts.index(st.session_state["reader_author"]) if st.session_state["reader_author"] in auth_opts else 0
-            selected_reader_auth = st.selectbox("מחבר:", options=auth_opts, index=cur_auth_idx)
-            st.session_state["reader_author"] = selected_reader_auth
-
-        with col_cat:
-            cat_opts = ["כל המדורים"] + all_categories
-            cur_cat_idx = cat_opts.index(st.session_state["reader_category"]) if st.session_state["reader_category"] in cat_opts else 0
-            selected_reader_cat = st.selectbox("מדור:", options=cat_opts, index=cur_cat_idx)
-            st.session_state["reader_category"] = selected_reader_cat
-
-        available_reader_books = [
-            k for k in books_by_path.keys()
-            if (selected_reader_auth == "כל המחברים" or books_by_path[k]["author"] == selected_reader_auth)
-            and (selected_reader_cat == "כל המדורים" or books_by_path[k]["category"] == selected_reader_cat)
-        ]
-        sorted_reader_keys = sorted(available_reader_books, key=lambda k: books_by_path[k]['title'])
-
-        if not sorted_reader_keys:
-            st.info("אין ספרים התואמים את הסינון שנבחר.")
-        else:
-            default_book_idx = 0
-            if st.session_state.get("reader_book_path") in sorted_reader_keys:
-                default_book_idx = sorted_reader_keys.index(st.session_state["reader_book_path"])
-
-            with col_book:
-                selected_reader_path = st.selectbox(
-                    "ספר נוכחי:",
-                    options=sorted_reader_keys,
-                    index=default_book_idx,
-                    format_func=lambda k: f"{books_by_path[k]['title']}"
-                )
-                st.session_state["reader_book_path"] = selected_reader_path
-
-            current_meta = books_by_path[selected_reader_path]
-            total_paras = current_meta["total"]
-            total_pages = max(1, (total_paras + PARAS_PER_PAGE - 1) // PARAS_PER_PAGE)
-
-            toc = json.loads(current_meta["toc"]) if current_meta["toc"] else []
-
-            with col_toc:
-                if toc:
-                    toc_labels = [f"{t[0]} (פסקה {t[1] + 1})" for t in toc]
-                    jump_toc = st.selectbox("שער / פרק:", options=["בחר לקפיצה..."] + toc_labels)
-                    if jump_toc != "בחר לקפיצה...":
-                        chosen_idx = toc_labels.index(jump_toc)
-                        target_p_num = toc[chosen_idx][1] + 1
-                        st.session_state["reader_page"] = (target_p_num - 1) // PARAS_PER_PAGE + 1
-                        st.session_state["reader_target_p"] = target_p_num
-                else:
-                    st.caption("אין תוכן שערים מזוהה")
-
-            with col_font:
-                font_size = st.slider("כתב:", 16, 32, 20)
-
-            if st.session_state.get("reader_jump") is not None:
-                st.session_state["reader_page"] = min(st.session_state["reader_jump"], total_pages)
-                st.session_state["reader_jump"] = None
-            elif st.session_state.get("reader_last_book") != selected_reader_path:
-                st.session_state["reader_page"] = 1
-                st.session_state["reader_target_p"] = 0
-            st.session_state["reader_last_book"] = selected_reader_path
-            st.session_state["reader_page"] = max(1, min(st.session_state.get("reader_page", 1), total_pages))
-
-            def go_prev():
-                st.session_state["reader_page"] = max(1, st.session_state["reader_page"] - 1)
-                st.session_state["reader_target_p"] = 0
-
-            def go_next():
-                st.session_state["reader_page"] = min(total_pages, st.session_state["reader_page"] + 1)
-                st.session_state["reader_target_p"] = 0
-
-            st.markdown(f"""
-            <div style="background: #ffffff; border: 1px solid #e7e5e4; border-radius: 14px; padding: 16px 24px; margin-bottom: 20px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
-                <h2 style="margin: 0; color: #0c0a09; font-family: 'Frank Ruhl Libre', serif;">{current_meta['title']}</h2>
-                <div style="margin-top: 4px;">
-                    <span class="badge-author">✍️ {current_meta['author']}</span>
-                    <span style="font-size: 13.5px; color: #78716c; font-weight: 600;">מדור: {current_meta['category']} · מיקום: {selected_reader_path} · {total_paras} פסקאות</span>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-
-            nav1, nav2, nav3 = st.columns([1, 2, 1])
-            with nav1:
-                st.button("⬅️ עמוד קודם", use_container_width=True, key="t_prev", disabled=(st.session_state["reader_page"] <= 1), on_click=go_prev)
-            with nav2:
-                page_val = st.number_input(
-                    f"עמוד (מתוך {total_pages}):",
-                    min_value=1,
-                    max_value=total_pages,
-                    value=st.session_state["reader_page"],
-                    step=1,
-                    key="reader_page_input"
-                )
-                st.session_state["reader_page"] = page_val
-            with nav3:
-                st.button("עמוד הבא ➡️", use_container_width=True, key="t_next", disabled=(st.session_state["reader_page"] >= total_pages), on_click=go_next)
-
-            cur_p_start = (st.session_state["reader_page"] - 1) * PARAS_PER_PAGE + 1
-            cur_p_end = cur_p_start + PARAS_PER_PAGE - 1
-
-            cur = conn.cursor()
-            cur.execute("""
-            SELECT p_num, sec_name, raw_text
-            FROM paragraphs
-            WHERE book_path = ? AND p_num BETWEEN ? AND ?
-            ORDER BY p_num ASC;
-            """, (selected_reader_path, cur_p_start, cur_p_end))
-            page_paras = cur.fetchall()
-
-            target_p = st.session_state.get("reader_target_p", 0)
-
-            st.markdown("<div style='max-width: 900px; margin: 0 auto; background: #ffffff; border: 1px solid #e7e5e4; border-radius: 16px; padding: 32px 42px; box-shadow: 0 2px 5px rgba(0,0,0,0.02);'>", unsafe_allow_html=True)
-
-            for p_row in page_paras:
-                para_num = int(p_row[0])
-                sec_name = p_row[1]
-                p_text = p_row[2]
-
-                if para_num == target_p:
-                    st.markdown(f"""
-                    <div style="background-color: #fefce8; border-right: 5px solid #eab308; padding: 16px 20px; border-radius: 8px; margin-bottom: 24px;">
-                        <span style="font-size: 13px; color: #854d0e; font-weight: 800;">📍 פסקה {para_num} [{sec_name}]:</span>
-                        <div style="font-size: {font_size}px; line-height: 1.95; margin-top: 6px; color: #0c0a09; text-align: justify; font-weight: 600;">{p_text}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                else:
-                    st.markdown(f"""
-                    <div style="margin-bottom: 22px; padding-bottom: 14px; border-bottom: 1px solid #f5f5f4;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                            <span style="font-size: 12.5px; color: #a8a29e; font-weight: 800;">[{para_num}]</span>
-                            <span style="font-size: 12px; color: #b45309; font-weight: 600;">{sec_name}</span>
-                        </div>
-                        <div style="font-size: {font_size}px; line-height: 1.95; color: #292524; text-align: justify;">{p_text}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-            st.markdown("</div>", unsafe_allow_html=True)
-
-            st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
-            b1, b2, b3 = st.columns([1, 2, 1])
+            b1, _ = st.columns([1.5, 4])
             with b1:
-                st.button("⬅️ עמוד קודם ", key="b_prev", use_container_width=True, disabled=(st.session_state["reader_page"] <= 1), on_click=go_prev)
-            with b3:
-                st.button("עמוד הבא ➡️ ", key="b_next", use_container_width=True, disabled=(st.session_state["reader_page"] >= total_pages), on_click=go_next)
-
-# ==========================================
-# מצב 3: ✍️ שולחן המהדיר
-# ==========================================
-else:
-    st.markdown("### ✍️ שולחן המהדיר · כלי עריכה, השוואה וגימטריה")
-    st.caption("כלים מתקדמים למאגרי ענק (2,000+ ספרים)")
-
-    tab_diff, tab_gematria = st.tabs(["⚖️ השוואת נוסחאות וכתבי יד (Diff)", "🔢 מחשבון ואיתור גימטריאות"])
-
-    with tab_diff:
-        st.markdown("##### השוואת שני נוסחים (דפוס מול כתב יד / מהדורא קמא מול תנינא)")
-        diff_col1, diff_col2 = st.columns(2)
-        with diff_col1:
-            text_a = st.text_area("נוסח א' (דפוס ראשון / נוסח הבסיס):", value=st.session_state.get("diff_text_a", ""), height=180)
-        with diff_col2:
-            text_b = st.text_area("נוסח ב' (כתב יד / מהדורה שונה):", value=st.session_state.get("diff_text_b", ""), height=180)
-
-        if text_a.strip() and text_b.strip():
-            words_a = text_a.split()
-            words_b = text_b.split()
-            matcher = difflib.SequenceMatcher(None, words_a, words_b)
-            res_a = []
-            res_b = []
-            for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-                if tag == 'equal':
-                    chunk = " ".join(words_a[i1:i2])
-                    res_a.append(chunk)
-                    res_b.append(chunk)
-                elif tag == 'delete':
-                    chunk = " ".join(words_a[i1:i2])
-                    res_a.append(f'<span class="diff-del">{chunk}</span>')
-                elif tag == 'insert':
-                    chunk = " ".join(words_b[j1:j2])
-                    res_b.append(f'<span class="diff-add">{chunk}</span>')
-                elif tag == 'replace':
-                    ca = " ".join(words_a[i1:i2])
-                    cb = " ".join(words_b[j1:j2])
-                    res_a.append(f'<span class="diff-del">{ca}</span>')
-                    res_b.append(f'<span class="diff-add">{cb}</span>')
-
-            st.markdown("---")
-            st.markdown("#### 🔍 תוצאת ההשוואה המדויקת:")
-            r_col1, r_col2 = st.columns(2)
-            with r_col1:
-                st.markdown(f"""
-                <div style="background:#ffffff; border:1px solid #e7e5e4; border-radius:10px; padding:16px; font-size:17.5px; line-height:1.9;">
-                    <b style="color:#1e3a8a;">נוסח א' (מחיקות/שינויים באדום):</b><br><br>
-                    {" ".join(res_a)}
-                </div>
-                """, unsafe_allow_html=True)
-            with r_col2:
-                st.markdown(f"""
-                <div style="background:#ffffff; border:1px solid #e7e5e4; border-radius:10px; padding:16px; font-size:17.5px; line-height:1.9;">
-                    <b style="color:#166534;">נוסח ב' (הוספות בירוק):</b><br><br>
-                    {" ".join(res_b)}
-                </div>
-                """, unsafe_allow_html=True)
-
-    with tab_gematria:
-        st.markdown("##### מחשבון גימטריה קבלי")
-        g_col1, g_col2 = st.columns([2, 1])
-        with g_col1:
-            g_input = st.text_input("הקלד ביטוי או שם קדוש:", placeholder="למשל: אדם קדמון, אהי\"ה, הויה...")
-        with g_col2:
-            if g_input:
-                val = calculate_gematria(fast_clean(g_input))
-                st.metric("ערך הגימטריה:", val)
-
-        st.markdown("---")
-        st.markdown("##### 🔍 איתור מילים שוות ערך במסד הנתונים")
-        target_val = st.number_input("חפש מילים במאגר שערכן שווה ל:", min_value=1, max_value=2000, value=72)
-        if st.button("מצא מילים שוות גימטריה"):
-            t_gem = time.time()
-            cur = conn.cursor()
-            cur.execute("SELECT raw_text FROM paragraphs ORDER BY RANDOM() LIMIT 200;")
-            sample_paras = cur.fetchall()
-            found_words = set()
-
-            for p in sample_paras:
-                for w in p[0].split():
-                    clean_w = fast_clean(w)
-                    if len(clean_w) > 1 and calculate_gematria(clean_w) == target_val:
-                        found_words.add(clean_w)
-                        if len(found_words) >= 40:
-                            break
-                if len(found_words) >= 40:
-                    break
-
-            el_gem = time.time() - t_gem
-            if found_words:
-                st.success(f"נמצאו {len(found_words)} מילים שוות גימטריה ל-{target_val} (בתוך {el_gem:.3f} שניות):")
-                st.markdown(" · ".join([f"**{w}**" for w in sorted(found_words)]))
-            else:
-                st.info("לא נמצאו מילים תואמות בטווח הדגימה.")
+                with st.popover("📋 העתק ציטוט"):
+                    citation = f'[{r["title"]}, {r["section"]}]: "{r["raw_text"].strip()}"'
+                    st.text_area("ציטוט להערת שוליים:", citation, height=90)
+            st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
